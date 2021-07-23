@@ -1,0 +1,93 @@
+SELECT t_tuc.business_id, date_ch, date_tip, business_lat, business_long, business_park, business_price,
+	business_open, business_cat, n_photo, cum_n_tips, cum_max_friends, cum_u_names, cum_max_u_elite, cum_max_us_fans,
+	cum_max_us_rev
+FROM (SELECT t_b.business_id1 AS business_id, business_lat, business_long, business_park, business_price,
+	business_open, business_cat, n_photo
+FROM (-- table1: for business
+SELECT business_id AS business_id1, latitude AS business_lat, longitude AS business_long,
+ (CASE WHEN STRPOS((attributes::json)->>'BusinessParking','True')<>0 THEN 'true' ELSE 'false' END) AS business_park,
+ CAST((attributes::json)->>'RestaurantsPriceRange2' AS INTEGER) AS business_price,
+ is_open AS business_open, categories AS business_cat
+FROM public2.businesstable
+WHERE STRPOS(categories,'Restaurants')<>0) AS t_b
+LEFT JOIN
+(-- table2: for photos
+SELECT business_id AS business_id2, COUNT(*) AS n_photo
+FROM public2.phototable
+GROUP BY business_id) AS t_p
+ON t_b.business_id1 = t_p.business_id2) AS t_bp,
+(SELECT t_tu.business_id6 AS business_id, t_ch.date3 AS date_ch, t_tu.date6 AS date_tip,
+	t_tu.cum_n_tips AS cum_n_tips,
+	t_tu.cum_max_friends AS cum_max_friends, t_tu.cum_u_names AS cum_u_names,
+	t_tu.cum_max_u_elite AS cum_max_u_elite, t_tu.cum_max_us_fans AS cum_max_us_fans,
+	t_tu.cum_max_us_rev AS cum_max_us_rev
+FROM (-- table3: for checkins
+SELECT t3_1.business_id AS business_id3, date1::date AS date3
+FROM (SELECT business_id AS business_id, unnest(string_to_array(date,',')) as date1
+FROM public2.checkintable) as t3_1
+GROUP BY business_id3, date3) AS t_ch
+FULL OUTER JOIN (-- the same as table 6.2 but this time using the tips data
+SELECT tips_user.business_id51 AS business_id6,
+	tips_user.date5 AS date6,
+	tips_user.n_tips AS n_tips,
+	tips_user.cum_n_tips AS cum_n_tips,
+	(SELECT max(max_us_friends) AS cum_max_friends
+	FROM (SELECT business_id, date, max(users.n_friends) AS max_us_friends
+		FROM public2.tipstable
+		LEFT JOIN (SELECT user_id AS user_id, array_length(string_to_array(users.friends,','),1) AS n_friends
+		FROM public2.userstable AS users) AS users
+		ON public2.tipstable.user_id=users.user_id
+		GROUP BY business_id, date) AS t53
+	WHERE t53.business_id=tips_user.business_id51 AND t53.date::date<tips_user.date5),
+	(SELECT STRING_AGG(DISTINCT u_names, ',') AS cum_u_names
+	FROM (SELECT business_id, date,
+		STRING_AGG(DISTINCT users.u_name, ',') AS u_names
+		FROM public2.tipstable
+		LEFT JOIN (SELECT user_id AS user_id, name AS u_name
+		FROM public2.userstable AS users) AS users
+		ON public2.tipstable.user_id=users.user_id
+		GROUP BY business_id, date) AS t53
+	WHERE t53.business_id=tips_user.business_id51 AND t53.date::date<tips_user.date5),
+	(SELECT max(max_u_elite) AS cum_max_u_elite
+	FROM (SELECT business_id, date,
+		max(users.n_elite) AS max_u_elite
+		FROM public2.tipstable
+		LEFT JOIN (SELECT user_id AS user_id, array_length(string_to_array(users.elite,','),1) AS n_elite
+		FROM public2.userstable AS users) AS users
+		ON public2.tipstable.user_id=users.user_id
+		GROUP BY business_id, date) AS t53
+	WHERE t53.business_id=tips_user.business_id51 AND t53.date::date<tips_user.date5),
+	(SELECT max(max_us_fans) AS cum_max_us_fans
+	FROM (SELECT business_id, date,
+		max(users.u_fans) AS max_us_fans
+		FROM public2.tipstable
+		LEFT JOIN (SELECT user_id AS user_id,
+		fans AS u_fans
+		FROM public2.userstable AS users) AS users
+		ON public2.tipstable.user_id=users.user_id
+		GROUP BY business_id, date) AS t53
+	WHERE t53.business_id=tips_user.business_id51 AND t53.date::date<tips_user.date5),
+	(SELECT max(max_us_rev) AS cum_max_us_rev
+	FROM (SELECT business_id, date,
+		max(users.us_rev) AS max_us_rev
+		FROM public2.tipstable
+		LEFT JOIN (SELECT user_id AS user_id,
+		review_count AS us_rev
+		FROM public2.userstable AS users) AS users
+		ON public2.tipstable.user_id=users.user_id
+		GROUP BY business_id, date) AS t53
+	WHERE t53.business_id=tips_user.business_id51 AND t53.date::date<tips_user.date5)
+FROM (SELECT t52.business_id51 AS business_id51,
+	t52.date5 AS date5,
+	t52.n_tips AS n_tips,
+	(SELECT COUNT(t51.text)
+	FROM public2.tipstable AS t51
+	WHERE t51.business_id=t52.business_id51 AND t51.date::date<t52.date5) AS cum_n_tips
+FROM (SELECT tips.business_id AS business_id51,
+	date::date AS date5,
+	COUNT(tips.text) AS n_tips
+FROM public2.tipstable AS tips
+GROUP BY business_id, date5) AS t52) AS tips_user) AS t_tu
+ON t_ch.date3 = t_tu.date6 AND t_ch.business_id3 = t_tu.business_id6
+WHERE cum_n_tips <> 0) AS t_tuc
+WHERE t_bp.business_id = t_tuc.business_id;
