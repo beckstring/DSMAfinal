@@ -90,4 +90,4 @@ FROM public2.tipstable AS tips
 GROUP BY business_id, date5) AS t52) AS tips_user) AS t_tu
 ON t_ch.date3 = t_tu.date6 AND t_ch.business_id3 = t_tu.business_id6
 WHERE cum_n_tips <> 0) AS t_tuc
-WHERE t_bp.business_id = t_tuc.business_id;
+WHERE t_bp.business_id = t_tuc.business_id; 
